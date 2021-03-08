@@ -1,0 +1,83 @@
+---
+title: "Task 1 - Agglomerative hierarchical clustering"
+author: "Alex Ehrens"
+date: "3/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# attach packages
+library(tidyverse)
+library(here)
+library(cluster)
+library(ggdendro)
+```
+
+### 1) Read in and wrangle stream chemistry data
+
+```{r}
+# read in dataset from SBC LTER
+stream_chem <- read_csv(here("data", "sbc_lter_registered_stream_chemistry.csv"))
+
+# set -999.0 values to NA across all columns with numeric values
+stream_chem <- stream_chem %>% 
+  mutate(across(where(is.numeric)), na_if(., -999.0))
+
+# transform into a dataframe summarizing means from all observations at each site and remove all sites with NA values
+stream_chem_summary <- stream_chem %>% 
+  group_by(site_code) %>% 
+  summarize(
+    mean_nh4 = mean(nh4_uM, na.rm = TRUE),
+    mean_no3 = mean(no3_uM, na.rm = TRUE),
+    mean_po4 = mean(po4_uM, na.rm = TRUE),
+    mean_tdn = mean(tdn_uM, na.rm = TRUE),
+    mean_tdp = mean(tdp_uM, na.rm = TRUE),
+    mean_tpc = mean(tpc_uM, na.rm = TRUE),
+    mean_tpn = mean(tpn_uM, na.rm = TRUE),
+    mean_tpp = mean(tpp_uM, na.rm = TRUE),
+    mean_tss = mean(tss_mgperLiter, na.rm = TRUE),
+    mean_spec_cond = mean(spec_cond_uSpercm, na.rm = TRUE)
+  ) %>% 
+  filter(is.na(mean_tpn) == FALSE)
+
+# scale the data in each column 
+stream_chem_scaled <- stream_chem_summary %>% 
+  select(2:11) %>% 
+  scale()
+
+# add row names of sites from original stream_chem dataframe
+rownames(stream_chem_scaled) <- stream_chem_summary$site_code
+```
+
+### 2) Calculate the euclidean distance between each site
+```{r}
+# use stats::dist() to calculate euclidean distance
+euc_distance <- dist(stream_chem_scaled, method = "euclidean")
+
+# view euclidean distances
+euc_distance
+```
+
+### 3) Create a dendrogram using hierarchical clustering by complete linkage
+```{r}
+# Hierarchical clustering (complete linkage)
+hc_complete <- hclust(euc_distance, method = "complete")
+
+# plot it (with ggplot using ggdendrogram):
+ggdendrogram(hc_complete, 
+             rotate = FALSE) +
+  theme_minimal() +
+  labs(title = "Hierarchical clustering of Santa Barbara Coastal water chemistry by site",
+       x = "Site", 
+       y = "Height",
+       caption = "Agglomerative hierarchical clustering using the complete linkage method to compare multivariate water chemistry from \nvarious sampling sites along the Santa Barbara Coastal drainage area. Data from: SBC LTER & J. Melack, 2019.") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+### Data Citation:
+
+Santa Barbara Coastal LTER and J. Melack. 2019. SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000 ver 16. Environmental Data Initiative. [https://doi.org/10.6073/pasta/67a558a24ceed9a0a5bf5e46ab841174](https://doi.org/10.6073/pasta/67a558a24ceed9a0a5bf5e46ab841174).
+
+### END TASK 1

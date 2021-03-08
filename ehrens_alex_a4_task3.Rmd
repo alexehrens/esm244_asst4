@@ -1,0 +1,82 @@
+---
+title: "Task 3 - Bootstrapped confidence interval for proportions"
+author: "Alex Ehrens"
+date: "3/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# attach packages
+library(tidyverse)
+library(boot)
+```
+
+### 1) Create vector of data reflecting UCSB survey results
+```{r}
+# start with vector of survey results (22 of 36 nonbinary/genderqueer students)
+survey_vec <- c(rep(1, 22), rep(0, 14)) # set a value of 1 to be a "yes" response and value of 0 to be a "no" response
+
+# make into data frame just for seeing data and responses side by side
+survey_df <- data.frame(survey_vec) %>% 
+  mutate(response = case_when(
+    survey_vec == 1 ~ "yes",
+    survey_vec == 0 ~ "no"
+  ))
+```
+
+### 2) Make function for calculating proportions from vectors of UCSB survey results
+```{r}
+# create function that calculates proportion of "yes" answers in any given sample
+prop_function <- function(x, i){
+  # since "yes" values are 1 and "no" values are 0, a sum of the vector will result in total number of "yes" votes across the entire sample
+  # that sum can be divided by total number of individuals in sample to get proportion
+  prop = sum(x[i]) / length(x[i])
+}
+
+# test function on survey data vector
+fun_test <- prop_function(survey_vec)
+fun_test
+```
+
+### 3) Create bootstrap samples to find confidence interval 
+```{r}
+# create 10,000 bootstrap samples from the survey vector
+survey_boot_10k <- boot(survey_vec,
+                        statistic = prop_function,
+                        R = 10000)
+
+# view results of proportions from all bootstrap samples
+#survey_boot_10k$t 
+#survey_boot_10k
+
+# find bootstrapped confidence interval
+survey_boot_ci <- boot.ci(survey_boot_10k, conf = 0.95)
+survey_boot_ci
+```
+
+### 4) Plot a histogram of bootstrapped proportions
+```{r}
+# first convert bootstrapping results into data frame
+survey_boot_10k_df <- data.frame(survey_props = survey_boot_10k$t)
+
+# create histogram 
+ggplot(data = survey_boot_10k_df, aes(x = survey_props)) +
+  geom_histogram() +
+  labs(x = "Bootstrap Sample Survey Proportions",
+       y = "Count") +
+  theme_minimal()
+```
+
+#### Summary:
+
+In a 2014 survey, a sample of 36 UCSB community members identifying as nonbinary/genderqueer were asked if they had personally experienced "exclusionary, offensive, hostile, or intimidating conduct". Of that sample, 22 students (or a proportion of 0.61) had responded "yes". This analysis created 10,000 bootstrap samples (resampling with replacement) using the original sample of 36 students as a "surrogate" population. Finding the proportion of students who would respond "yes" within each bootstrap sample provides a sampling distribution that can be used to find a bootstrapped confidence interval for the sample proportion of 0.61. This analysis found the bootstrapped 95% confidence interval to be from 0.45 to 0.77 (using a 'normal' confidence interval). 
+
+In other words, the proportion of nonbinary/genderqueer students at UCSB who experienced "exclusionary, offensive, hostile, or intimindating conduct" is 0.61 (n = 36), with a bootstrapped 95% confidence interval of [0.45, 0.77] (n = 10,000 bootstrap samples).
+
+### Data Citation:
+
+UCSB Campus Climate Project Final Report, 2014. Prepared by Rankin & Associates Consulting. Available at: [http://campusclimate.ucop.edu/_common/files/pdf-climate/ucsb-full-report.pdf](http://campusclimate.ucop.edu/_common/files/pdf-climate/ucsb-full-report.pdf).
+
+### END TASK 3

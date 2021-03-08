@@ -1,0 +1,151 @@
+---
+title: "Task 2 - Parameter estimation"
+author: "Alex Ehrens"
+date: "3/3/2021"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# attach packages
+library(tidyverse)
+library(here)
+library(janitor)
+library(gt)
+library(patchwork)
+library(broom)
+library(nlstools)
+library(kableExtra)
+```
+
+### 1) Read in and wrangle fish catch data
+```{r}
+# read in data, clean names, trim top/bottom extra rows, select only wild catch column, and convert columns to numeric
+fish_catch <- read_csv(here("data", "fish_catch.csv"), skip = 2) %>% 
+  clean_names() %>% 
+  tail(-2) %>% 
+  head(-4) %>% 
+  select(year, wild_catch) %>% 
+  mutate(
+    year = as.numeric(year),
+    wild_catch = as.numeric(wild_catch)
+  )
+
+# mutate a new column assigning values starting from 0 with each year
+n <- seq(0, 62)
+
+fish_catch_n <- data.frame(fish_catch, n)
+```
+
+### 2) Create an (unfinished) exploratory plot of wild fish catch over time
+```{r}
+# plot fish catch over time
+ggplot(data = fish_catch_n) +
+  geom_line(aes(x = year, y = wild_catch))+
+  labs(caption = "Figure 1 - Exploratory plot of wild fish catch over time from 1950 - 2012. Data from Earth Policy Institute and U.N. Food \nand Agriculture Organization (FAO).") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+#### 2a) Model type:
+
+The wild fish catch data in Figure 1 look like a logistic growth curve, where fish catch reaches a carrying capacity (K). The equation for that type of growth curve is as follows:
+
+$P(t)=\frac{K}{1+Ae^{-kt}}$
+
+where:
+
+- $K$ is the carrying capacity
+- $A$ is $\frac{K-P_0}{P_0}$
+- $k$ is the growth rate constant
+
+Values for k, A, and K will be estimated from the data and Figure 1. These estimates will be used as starting values for the nonlinear least squares parameter estimation. k is determined by calculating the linear slope of the exponential growth phase of the data (before curve starts leveling off at carrying capacity), K is estimated by looking at the fish catch value where the data plateaus in Figure 1, and A is calculated using the estimated carrying capacity and initial value of fish catch.
+
+#### 2b) Find initial estimates for model parameters:
+```{r}
+# estimate k of exponential phase of growth (up to about 1988)
+fish_catch_exp <- fish_catch_n %>% 
+  filter(year < 1988) %>% 
+  mutate(ln_wild_catch = log(wild_catch))
+  
+# Model linear to get *k* estimate (the slope of this linear equation is an estimate of the growth rate constant):
+lm_k <- lm(ln_wild_catch ~ year, data = fish_catch_exp)
+lm_k
+
+# Coefficient (k) ~ 0.035
+```
+
+Initial parameter estimates are as follows:
+
+- k = 0.035
+- K = 93
+- A = 4.407
+
+### 3) Use nonlinear least squares to find model parameters for wild catch rate
+```{r, results=FALSE}
+# run nls() to find model paramteres
+wild_catch_nls <- nls(wild_catch ~ K/(1 + A*exp(-k*n)),
+                      data = fish_catch_n,
+                      start = list(K = 93, A = 4.407, k = 0.035),
+                      trace = TRUE
+              )
+
+summary(wild_catch_nls)
+```
+
+```{r}
+# view results in tidy format
+wild_catch_model <- broom::tidy(wild_catch_nls)
+
+# put results in table
+wild_catch_model %>% 
+  kable(digits = 2,
+        caption = "Table 1. Estimates for each of the fish catch model parameters as determined by nonlinear least squares.",
+        col.names = c("Parameter",
+                      "Estimate",
+                      "Std. Error",
+                      "Statistic",
+                      "p-value")) %>% 
+    kable_styling(bootstrap_options = "bordered",
+                full_width = FALSE,
+                position = "center")
+```
+
+Therefore, the equation for wild fish catch model with the parameters estimated using a nonlinear least squares analysis is as follows:
+
+$P(t)=\frac{100.28}{1+4.32e^{-0.07t}}$
+
+### 4) Use NLS model parameters to predict wild fish catches
+```{r}
+# predict wild catch using model parameters from NLS
+wild_catch_predict <- predict(wild_catch_nls)
+
+# put that in data frame with original data
+fish_catch_compare <- data.frame(fish_catch, wild_catch_predict)
+```
+
+### 5) Create plot comparing original data and NLS model output
+```{r, out.width="100%"}
+ggplot(data = fish_catch_compare) +
+  geom_line(aes(x = year, y = wild_catch, color = "Observed")) +
+  geom_line(aes(x = year, y = wild_catch_predict, color = "Predicted")) +
+  scale_color_manual(values = c("black", "red")) +
+  scale_x_continuous(expand = c(0,0)) +
+  theme_bw() +
+  labs(title = "Comparison of observed vs. model-predicted global wild fish catch over time",
+       subtitle = "1950 - 2012",
+       x = "Year",
+       y = "Wild Fish Catch (in million tons)",
+       caption = "Figure 2 - A comparison of global wild fish catch from observed data (black) and predicted data (red) from a logistic \ngrowth model with parameters estimated from a nonlinear least squares analysis of original data. Original data from \nEarth Policy Institute and UN FAO.") +
+  theme(plot.caption = element_text(hjust = 0),
+        legend.title = element_blank(),
+        legend.position = c(0.85, 0.72))
+```
+
+### Data Citation:
+
+Global wild fish catch and aquaculture production, compiled by Earth Policy Institute with 1950-2010 from U.N. Food and Agriculture Organization (FAO), Global Capture Production and Global Aquaculture Production, electronic databases, at [www.fao.org/fishery/topic/16140/en](www.fao.org/fishery/topic/16140/en).
+
+### END TASK 2
